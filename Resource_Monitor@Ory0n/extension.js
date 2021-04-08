@@ -22,7 +22,7 @@
 
 'use strict';
 
-const { St, GObject, NM, GLib, Shell, Gio, Clutter, Notify } = imports.gi;
+const { St, GObject, NM, GLib, Shell, Gio, Clutter } = imports.gi;
 
 const Main = imports.ui.main;
 const PanelMenu = imports.ui.panelMenu;
@@ -1351,17 +1351,6 @@ var ResourceMonitor = class ResourceMonitor extends PanelMenu.Button {
             //Instead of assuming no temp exists. Lets try calling lm_sensors..
             this._callLMSensors();
         }
-    }
-
-    _sendNotification(desc) {
-      Notify.init("Resource Monitor");
-      let notification = new Notify.Notification({
-          summary: 'Resource Moniter Alert',
-          body: desc,
-          "icon-name": "dialog-warning"
-      });
-
-      notification.show();
     }
 
     _callLMSensors() {
