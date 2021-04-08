@@ -22,7 +22,7 @@
 
 'use strict';
 
-const { St, GObject, NM, GLib, Shell, Gio, Clutter } = imports.gi;
+const { St, GObject, NM, GLib, Shell, Gio, Clutter, Notify } = imports.gi;
 
 const Main = imports.ui.main;
 const PanelMenu = imports.ui.panelMenu;
@@ -38,6 +38,8 @@ const Me = ExtensionUtils.getCurrentExtension();
 
 const Convenience = Me.imports.extensionUtils;
 const IndicatorName = Me.metadata['name'];
+
+const ByteArray = imports.byteArray;
 
 const SHELL_MINOR = parseInt(Config.PACKAGE_VERSION.split('.')[1]);
 const INTERVAL = 'interval';
@@ -1320,12 +1322,20 @@ var ResourceMonitor = class ResourceMonitor extends PanelMenu.Button {
     }
 
     _refreshCpuTemperature() {
+
+
         let cpuTemperatureFile = '/sys/devices/virtual/thermal/thermal_zone0/temp';
         if (GLib.file_test(cpuTemperatureFile, GLib.FileTest.EXISTS)) {
             let file = Gio.file_new_for_path(cpuTemperatureFile);
             file.load_contents_async(null, (source, result) => {
-                let contents = source.load_contents_finish(result)[1];
-                let temperature = parseInt(String(contents)) / 1000;
+                //Lets try to load the contents
+                let temperature = null;
+                try {
+                  let temperature = parseInt(String(source.load_contents_finish(result)[1])) / 1000;
+                } catch (e) {
+                  logError(e);
+                  temperature = this._callLMSensors();
+                }
 
                 if (this.cpuTemperatureFahrenheit) {
                     temperature = (temperature * 1.8) + 32;
@@ -1338,8 +1348,60 @@ var ResourceMonitor = class ResourceMonitor extends PanelMenu.Button {
                 }
             });
         } else {
-            this.cpuTemperature.text = '[Error';
+            //Instead of assuming no temp exists. Lets try calling lm_sensors..
+            this._callLMSensors();
         }
+    }
+
+    _sendNotification(desc) {
+      Notify.init("Resource Monitor");
+      let notification = new Notify.Notification({
+          summary: 'Resource Moniter Alert',
+          body: desc,
+          "icon-name": "dialog-warning"
+      });
+
+      notification.show();
+    }
+
+    _callLMSensors() {
+
+      try {
+          let [, stdout, stderr, status] = GLib.spawn_command_line_sync('sensors -j');
+
+          if (status !== 0) {
+              if (stderr instanceof Uint8Array)
+                  stderr = ByteArray.toString(stderr);
+
+              throw new Error(stderr);
+          }
+
+          if (stdout instanceof Uint8Array) {
+              stdout = ByteArray.toString(stdout);
+              let data = JSON.parse(stdout);
+              let $return = '[';
+              let deviceRegex = /k10.*/
+
+              Object.entries(data).forEach(obj => {
+                if (obj[0].match(deviceRegex)) {
+                  //At this point there should only be 1 sub object.
+                  Object.keys(obj[1]["Tdie"]).forEach(obj2 => {
+                    if (obj2.match(/temp.*_input/)) {
+                      $return = obj[1]["Tdie"][obj2];
+                    }
+                  });
+                }
+              });
+            //  print(data["k10temp-pci-00c3"]["Tdie"]["temp2_input"]);
+            return $return;
+          }
+
+          // Now were done blocking the main loop, phewf!
+          //log(stdout);
+      } catch (e) {
+         logError(e);
+         this.cpuTemperature.text = '[Error';
+      }
     }
 }
 
