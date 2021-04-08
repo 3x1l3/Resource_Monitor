@@ -1331,13 +1331,21 @@ var ResourceMonitor = class ResourceMonitor extends PanelMenu.Button {
                 //Lets try to load the contents
                 let temperature = null;
                 try {
-                  let temperature = parseInt(String(source.load_contents_finish(result)[1])) / 1000;
+                  this._handleTemp(parseInt(String(source.load_contents_finish(result)[1])) / 1000);
                 } catch (e) {
                   logError(e);
-                  temperature = this._callLMSensors();
+                  this._callLMSensors();
                 }
 
-                if (this.cpuTemperatureFahrenheit) {
+            });
+        } else {
+            //Instead of assuming no temp exists. Lets try calling lm_sensors..
+            this._callLMSensors();
+        }
+    }
+
+    _handleTemp(temperature) {
+            if (this.cpuTemperatureFahrenheit) {
                     temperature = (temperature * 1.8) + 32;
                 }
 
@@ -1346,11 +1354,6 @@ var ResourceMonitor = class ResourceMonitor extends PanelMenu.Button {
                 } else {
                     this.cpuTemperature.text = `[${temperature.toFixed(0)}`;
                 }
-            });
-        } else {
-            //Instead of assuming no temp exists. Lets try calling lm_sensors..
-            this._callLMSensors();
-        }
     }
 
     _callLMSensors() {
@@ -1368,7 +1371,7 @@ var ResourceMonitor = class ResourceMonitor extends PanelMenu.Button {
           if (stdout instanceof Uint8Array) {
               stdout = ByteArray.toString(stdout);
               let data = JSON.parse(stdout);
-              let $return = '[';
+              let foundTemp = false;
               let deviceRegex = /k10.*/
 
               Object.entries(data).forEach(obj => {
@@ -1376,13 +1379,17 @@ var ResourceMonitor = class ResourceMonitor extends PanelMenu.Button {
                   //At this point there should only be 1 sub object.
                   Object.keys(obj[1]["Tdie"]).forEach(obj2 => {
                     if (obj2.match(/temp.*_input/)) {
-                      $return = obj[1]["Tdie"][obj2];
+                      this._handleTemp(obj[1]["Tdie"][obj2]);
+                      foundTemp = true;
                     }
                   });
                 }
               });
-            //  print(data["k10temp-pci-00c3"]["Tdie"]["temp2_input"]);
-            return $return;
+
+             if (!foundTemp){
+               this.cpuTemperature.text = '[NA';
+             }
+
           }
 
           // Now were done blocking the main loop, phewf!
