@@ -1323,25 +1323,31 @@ var ResourceMonitor = class ResourceMonitor extends PanelMenu.Button {
 
     _refreshCpuTemperature() {
 
+        let lm_sensors_exists = true;
+        try {
+             GLib.spawn_command_line_sync('sensors');
+        } catch (e) {
+            lm_sensors_exists = false;
+        }
+    
+        let cpuTemperatureFile = '/sys/devices/virtual/thermal/thermal_zone0/temp';
+        if (!lm_sensors_exists) {
+            let file = Gio.file_new_for_path(cpuTemperatureFile);
+            file.load_contents_async(null, (source, result) => {
+                //Lets try to load the contents
+                let temperature = null;
+                try {
+                  this._handleTemp(parseInt(String(source.load_contents_finish(result)[1])) / 1000);
+                } catch (e) {
+                  logError(e);
+                  this._callLMSensors();
+                }
 
-        // let cpuTemperatureFile = '/sys/devices/virtual/thermal/thermal_zone0/temp';
-        // if (GLib.file_test(cpuTemperatureFile, GLib.FileTest.EXISTS)) {
-        //     let file = Gio.file_new_for_path(cpuTemperatureFile);
-        //     file.load_contents_async(null, (source, result) => {
-        //         //Lets try to load the contents
-        //         let temperature = null;
-        //         try {
-        //           this._handleTemp(parseInt(String(source.load_contents_finish(result)[1])) / 1000);
-        //         } catch (e) {
-        //           logError(e);
-        //           this._callLMSensors();
-        //         }
-
-        //     });
-        // } else {
+            });
+        } else {
             //Instead of assuming no temp exists. Lets try calling lm_sensors..
             this._callLMSensors();
-        //}
+        }
     }
 
     _handleTemp(temperature) {
